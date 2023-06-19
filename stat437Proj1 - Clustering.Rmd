@@ -1,0 +1,319 @@
+---
+title: "Stat 437 Project 1: Clustering "
+
+header-includes:
+- \usepackage{bbm}
+- \usepackage{amssymb}
+- \usepackage{amsmath}
+- \usepackage{graphicx,float}
+- \usepackage{natbib}
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+fontsize: 11pt
+---
+
+```{r, echo=FALSE, warning=FALSE}
+library(knitr)
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+```
+
+# General rule and information
+You must show your work in order to get points. Please prepare your report according to the rubrics on projects that are given in the syllabus. In particular, please note that your need to submit codes that would have been used for your data analysis. Your report can be in .doc, .docx, .html or .pdf format. 
+
+The project will assess your skills in	K-means clustering,Hierarchical clustering, Nearest-neighbor classifier, and discriminant analysis for classification, for which visualization techniques you have learnt will be used to illustrate your findings. 
+
+# Data set and its description
+
+Please download the data set "TCGA-PANCAN-HiSeq-801x20531.tar.gz" from the website https://archive.ics.uci.edu/ml/machine-learning-databases/00401/. A brief description of the data set is given at https://archive.ics.uci.edu/ml/datasets/gene+expression+cancer+RNA-Seq. 
+
+You need to decompress the data file since it is a .tar.gz file. Once uncompressed, the data files are "labels.csv" that contains the cancer type for each sample, and "data.csv" that contains the "gene expression profile" (i.e., expression measurements of a set of genes) for each sample. Here each sample is for a subject and is stored in a row of "data.csv". In fact, the data set contains the gene expression profiles for 801 subjects, each with a cancer type, where each gene expression profile contains the gene expressions for the same set of 20531 genes. The cancer types are: "BRCA", "KIRC", "COAD", "LUAD" and "PRAD". In both files "labels.csv" and "data.csv", each row name records which sample a label or observation is for.  
+
+
+
+```{R load data}
+library(dplyr)
+data = read.csv("data.csv")
+labels = read.csv("labels.csv")
+
+```
+
+
+
+# Task A. Clustering
+
+For this task, you need to apply k-means and hierarchical clustering to cluster observations into their associated cancer types, and report your findings scientifically and professionally. 
+Your laptop may not have sufficient computational power to implement k-means and hierarchical clustering on the whole data set, and genes whose expressions are zero for most of the subjects may not be so informative of a cancer type.
+
+Please use `set.seed(123)` for random sampling via the command `sample`, random initialization of `kmeans`, implementing the gap statistic, and any other process where artificial randomization is needed.
+
+(**Task A1**) Complete the following data processing steps:
+
+*  Filter out genes (from "data.csv") whose expressions are zero for at least 300 subjects, and save the filtered data as R object "gexp2".
+
+```{r filter 1}
+# Filter out genes whose expressions are zero for at least 300 subjects
+gexp2 = data[, colSums(data == 0) < 300]
+
+```
+
+*  Use the command `sample` to randomly select 1000 genes and their expressions from "gexp2", and save the resulting data as R object "gexp3".
+
+```{r filter 2}
+
+# Randomly select 1000 genes and their expressions (excluding the first column)
+sample_cols = sample(2:ncol(gexp2), 1000)
+# Select the corresponding columns from gexp2 (excluding the first column)
+gexp3 = gexp2[, sample_cols]
+
+```
+
+* Use the command `sample` to randomly select 30 samples and their labels from the file "labels.csv", and save them as R object "labels1". For these samples, select the corresponding samples from "gexp3" and save them as R object "gexpProj1".
+
+```{r Filter 3}
+# Load the csv file into a data frame
+labels = read.csv("labels.csv")
+
+# Set the random seed to ensure reproducibility
+set.seed(123)
+
+# Use the sample() function to randomly select 30 rows
+rSel = sample(nrow(labels), 30)
+labels1 = labels[rSel, ]
+
+# Load the gexp3 dataset from the R object file
+load("gexp3.RData")
+
+# Select the corresponding rows from gexp3 based on the selected sample IDs
+gexpProj1 = gexp3[rSel, ]
+
+```
+
+
+* Use the command `scale` to standard the gene expressions for each gene in "gexpProj1", so that they have sample standard deviation 1. Save the standardized data as R object "stdgexpProj1".
+
+```{r fILTER 4}
+# Load the gexp3 dataset from the R object file
+load("gexp3.RData")
+
+# Select the corresponding rows from gexp3 based on the selected sample IDs
+gexpProj1 = gexp3[rSel, ]
+
+# Use the scale function to standardize the gene expressions for each gene in gexpProj1
+stdgexpProj1 <- scale(gexpProj1)
+```
+(**Task A2**) 
+
+(**Part 1 of Task A2**) Randomly pick 50 genes and their expressions from "stdgexpProj1", and do the following to these expressions: apply the "gap statistic" to estimate the number of clusters, apply K-means clustering with the estimated number of clusters given by the gap statistic, visualize the classification results using techniques given by "LectureNotes3_notes.pdf.pdf", and provide a summary on classification errors. You may use the command `table` and "labels1" to obtain classification errors. Note that the cluster numbering given by `kmeans` will usually be coded as follows:
+
+
+```
+#   Class  label
+#     PRAD  5
+#     LUAD  4
+#     BRCA  1
+#     KIRC  3
+#     COAD  2
+```
+
+When you apply `clusGap`, please use arguments `K.max=10, B=200,iter.max=100`, and when you use `kmeans`, please use arguments `iter.max = 100, nstart=25, algorithm = c("Hartigan-Wong")`.
+
+```{r TASKA2 PARTA}
+set.seed(123)
+library(ggplot2)
+#Randomly pick 50 genes and their expression from "stdgexpProj1"
+rse_stdgexpProj1 = sample(2:ncol(stdgexpProj1), 50)
+sample_stdgexpProj1 = stdgexpProj1[, rse_stdgexpProj1]
+
+
+#Estimate no. of clusters using Gap statistics
+library(cluster)
+gap = clusGap(sample_stdgexpProj1, kmeans, K.max=10, B=200, iter.max = 100)
+
+k = maxSE(gap$Tab[, "gap"], gap$Tab[, "SE.sim"], method="Tibs2001SEmax")
+k
+
+#Apply k-means
+km.out=kmeans(sample_stdgexpProj1,k,iter.max = 100, nstart=25, algorithm=c("Hartigan-Wong"))
+
+# Visualize the classification results
+cluster=factor(km.out$cluster)
+cluster
+
+#Classification table and error
+table(labels1$Class, cluster)
+
+data=as.data.frame(sample_stdgexpProj1)
+
+# classification error
+sum(1- as.numeric(cluster==labels1$Class))/length(labels1$Class)
+#The classification error is low at 100%. This could be because k=1 is chosen by gapstatistics
+
+
+```
+
+```{r TASKA2}
+new_data=as.data.frame(sample_stdgexpProj1)
+new_data$Class = factor(colnames(labels1))
+# Add Class column at the beginning of stdgexp2
+new_data = cbind(Class = labels1$Class, new_data)
+
+colnames(new_data) <- c("Class", paste0("X", seq_len(ncol(new_data)-1)))
+
+p3 = ggplot(new_data,aes(X1,X2))+xlab("Gene 1 expression")+ylab("Gene 2 expression")+theme_bw()+geom_point(aes(shape=Class,color=cluster),na.rm = T)+theme(legend.position="right")+ggtitle("Clustering via 100 features")+theme(plot.title = element_text(hjust = 0.5))
+p3
+
+```
+
+(**Part 2 of of Task A2**) Upon implementing `kmeans` with $k$ as the number of clusters, we will obtain the "total within-cluster sum of squares" $W\left(k\right)$ from the output `tot.withinss` of `kmeans`. If we try a sequence of $k=1,2,3,...,10$, then we get $W\left(k\right)$ for
+each $k$ between $1$ and $10$. Let us look at the difference
+$\Delta_{k}=W\left(  k\right)  -W\left(  k+1\right)$ for $k$ ranging from $1$ to $9$. The $K^{\ast}$ for which
+$$
+\left\{\Delta_{k}:k<K^{\ast}\right\}  \gg\left\{  \Delta_{k}:k\geq K^{\ast}\right\}
+$$
+is an estimate of the true number $K$ of clusters in the data, where $\gg$ means "much larger". Apply this method to obtain an estimate of $K$ for the data you created in **Part 1**, and provide a plot of $W\left(k\right)$ against $k$ for each $k$ between $1$ and $10$. Compare this estimate with the estimate obtained in **Part 1** given by the gap statistic, comment on the accuracy of the two estimates, and explain why they are different.
+
+```{r TASKA2 PART2}
+# Calculate tot.withinss for each value of k
+w = numeric(10)
+for (k in 1:10) {
+  kmeans_model = kmeans(sample_stdgexpProj1, centers = k, nstart = 10)
+  w[k] = kmeans_model$tot.withinss}
+k_star = which.min(diff(w))
+cat("Estimated number of clusters:", k_star)
+
+
+# Plot W(k) vs k
+df1 = data.frame(k = 1:10, w = w)
+ggplot(df1, aes(x = k, y = w)) +
+  geom_line() +
+  geom_point() +
+  ggtitle("Optimal K") +
+  labs(x = "Number of Clusters (K)", y = "Total Within-Cluster Sum of Squares (W(k))") +
+  theme_bw()
+
+```
+
+(**Part 3 of of Task A2**) Randomly pick 250 genes and their expressions from "stdgexpProj1", and for these expressions, do the analysis in **Part 1** and **Part 2**. Report your findings, compare your findings with those from **Part 1** and **Part 2**; if there are differences between these findings, explain why. Regard using more genes as using more features, does using more features necessarily give more accurate clutering or classification results? 
+```{r TASKA2 PART3}
+
+set.seed(123)
+
+#Randomly pick 250 genes and their expression from "stdgexpProj1"
+std2 = sample(2:ncol(stdgexpProj1), 250)
+std3 = stdgexpProj1[, std2]
+
+#PART 1 portion applied to std3
+#Estimate no. of clusters using Gap statistics
+gap2 = clusGap(std3, kmeans, K.max=10, B=200, iter.max = 100)
+
+k2 = maxSE(gap2$Tab[, "gap"], gap2$Tab[, "SE.sim"], method="Tibs2001SEmax")
+k2
+
+#Apply k-means
+km.out=kmeans(std3,k,iter.max = 250, nstart=25, algorithm=c("Hartigan-Wong"))
+
+# Clustering
+cluster2 = factor(km.out$cluster)
+cluster2
+
+# Classification table and error
+table(labels1$Class, cluster2)
+
+
+# classification error
+sum(1- as.numeric(cluster2==labels1$Class))/length(labels1$Class)
+
+nd=as.data.frame(std3)
+nd$Class = factor(colnames(labels1))
+# Add Class column at the beginning of stdgexp2
+nd = cbind(Class = labels1$Class, nd)
+
+colnames(nd) <- c("Class", paste0("X", seq_len(ncol(nd)-1)))
+
+p4 = ggplot(nd,aes(X1,X2))+xlab("Gene 1 expression")+ylab("Gene 2 expression")+theme_bw()+geom_point(aes(shape=Class,color=cluster),na.rm = T)+theme(legend.position="right")+ggtitle("Clustering via 250 features")+theme(plot.title = element_text(hjust = 0.5))
+p4
+
+
+```
+```{r TASKA2 PART2 continued}
+#PART 2 applied to std3
+# Calculate tot.withinss for each value of k
+w2 = numeric(10)
+for (k in 1:10) {
+  kmeans_model2 = kmeans(std3, centers = k, nstart = 10)
+  w2[k] = kmeans_model2$tot.withinss}
+k_star2 = which.min(diff(w2))
+cat("Estimated number of clusters:", k_star2)
+
+
+# Plot W(k) vs k
+df2 = data.frame(k = 1:10, w2 = w2)
+ggplot(df2, aes(x = k, y = w2)) +
+  geom_line() +
+  geom_point() +
+  ggtitle("Optimal K2") +
+  labs(x = "Number of Clusters (K)", y = "Total Within-Cluster Sum of Squares (W(k))") +
+  theme_bw()
+
+
+
+````
+
+
+(**Task A3**) Randomly pick 250 genes and their expressions from "stdgexpProj1", and for these expressions, do the following: respectively apply hierarchical clustering with average linkage, single linkage, and complete linkage to cluster subjects into groups, and create a dendrogram. For the dendrogram obtained from average linkage, find the height at which cutting the dendrogram gives the same number of groups in "labels1", and comment on the clustering results obtained at this height by comparing them to the truth contained in "labels1".
+
+```{r Task A3}
+# Select 250 genes at random from "stdgexpProj1"
+set.seed(123)
+sample_genes  = sample(ncol(stdgexpProj1), 250)
+sampled_stdgexpProj1 = stdgexpProj1[, sample_genes]
+
+# Add Class column at the beginning of stdgexp2
+sampled_stdgexpProj1 = cbind(Class = labels1$Class, sampled_stdgexpProj1)
+
+#Let,
+x = sampled_stdgexpProj1 # where, x is a matrix with integer values
+
+#Apply HC clustering (Average, Complete and Single)
+hc.complete=hclust(dist(x), method="complete")
+hc.average=hclust(dist(x), method="average")
+hc.single=hclust(dist(x), method="single")
+
+# number of clusters/groups in "labels1"
+num_clusters = length(unique(labels1$Class))
+
+# Find the height at which to cut the dendrograms to get the desired number of clusters
+height.complete <- hc.complete$height[which.max(table(cutree(hc.complete, k = num_clusters)))]
+height.average <- hc.average$height[which.max(table(cutree(hc.average, k = num_clusters)))]
+height.single <- hc.single$height[which.max(table(cutree(hc.single, k = num_clusters)))]
+
+# Cut the dendrograms at the desired heights
+clusters.complete <- cutree(hc.complete, h = height.complete)
+clusters.average <- cutree(hc.average, h = height.average)
+clusters.single <- cutree(hc.single, h = height.single)
+
+# Compare the clustering results to the true labels/contingency table
+table.complete <- table(labels1$Class, clusters.complete)
+table.average <- table(labels1$Class, clusters.average)
+table.single <- table(labels1$Class, clusters.single)
+
+# Create dendogram
+par(mfrow=c(1,3))
+plot(hc.complete, main="Complete Linkage", xlab="", sub="", cex=.9)
+abline(h = height.complete, col = "red")
+plot(hc.average, main="Average Linkage", xlab="", sub="", cex=.9)
+abline(h = height.average, col = "red")
+plot(hc.single, main="Single Linkage", xlab="", sub="", cex=.9)
+abline(h = height.single, col = "red")
+
+```
+# By using k=num_clusters in the cutree function, we obtain a clustering with the same number of groups as in the true labels. The which(table(clngrp) == num_clusters) expression returns the indices where the number of groups is equal to num_clusters. We then extract the maximum height at those indices using the max function. This is because there can be multiple heights at which the clustering produces the same number of groups, but we want to choose the height that gives the "best" separation between the groups.
+
+
+# We see that the clustering algorithm has successfully identified a cluster of 6 samples from BRCA with similar expression patterns (cluster 2), and a cluster of 5 samples from KIRC with similar expression patterns (cluster 4). However, the other clusters show more mixed patterns of true labels, indicating that the clustering algorithm may not be separating the samples as accurately.
+
+```
+
+

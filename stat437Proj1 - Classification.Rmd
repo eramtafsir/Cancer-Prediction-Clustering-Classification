@@ -1,0 +1,421 @@
+---
+title: "Stat437 Project Task B"
+output: html_document
+date: "2023-04-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+#plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+# Task B. Classification
+
+For this task, we will use the same data set you would have downloaded. Please use `set.seed(123)` for random sampling via the command `sample` and any other process where artificial randomization is needed. 
+
+(**Task B1**) After you obtain "labels.csv" and "data.csv", do the following:
+
+```{R load data}
+library(dplyr)
+data = read.csv("data.csv")
+labels = read.csv("labels.csv")
+```
+
+*  Filter out genes (from "data.csv") whose expressions are zero for at least 300 subjects, and save the filtered data as R object "gexp2".
+
+```{r filter 1}
+# Filter out genes whose expressions are zero for at least 300 subjects
+gexp2 = data[, colSums(data == 0) < 300]
+
+```
+
+*  Use the command `sample` to randomly select 1000 genes and their expressions from "gexp2", and save the resulting data as R object "gexp3". 
+
+```{r filter2}
+set.seed(123)
+# Randomly select 1000 genes and their expressions (excluding the first column)
+sample_cols = sample(2:ncol(gexp2), 1000)
+# Select the corresponding columns from gexp2 (excluding the first column)
+gexp3 = gexp2[, sample_cols]
+
+```
+
+*  Pick the samples from "labels.csv" that are for cancer type "LUAD" or "BRCA", and save them as object "labels2". For these samples, pick the corresponding gene expressions from "gexp3" and save them as object "stdgexp2".
+
+```{r Filter 3}
+set.seed(123)
+# Pick the samples for cancer type "LUAD" or "BRCA"
+labels2 =  labels[labels$Class %in% c("LUAD", "BRCA"), ]
+
+# Pick the corresponding gene expressions from "gexp3"
+stdgexp2 = gexp3[row.names(labels2), ]
+# Add Class column at the beginning of stdgexp2
+stdgexp2 = cbind(Class = labels2$Class, stdgexp2)
+
+```
+
+(**Taks B2**) The assumptions of linear or quadratic discriminant analysis requires that each observation follows a Gaussian distribution given the class or group membership of the observation, and that each observation follows a Gaussian mixture model. In our settings here, each observation (as a row) within a group would follow a Gaussian with dimensionality equal to the number of genes (i.e., number of entries of the row). So, the more genes whose expressions we use for classification, the higher the dimension of these Gaussian distributions. Nonetheless, you need to check if the Gaussian mixture assumption is satisfied. Note that we only consider two classes "LUAD" and "BRCA", for which the corresponding Gaussian mixture has 2 components and hence has 2 bumps when its density is plotted.
+
+```{r Check Gaussian mixture assumption}
+library(ggplot2)
+
+# Subset of stdgexp2 for two cancer types
+cancer1 <- subset(stdgexp2, Class == "LUAD")
+cancer2 <- subset(stdgexp2, Class == "BRCA")
+
+# Drop the first column of the carrier1_train matrix
+c1 <- cancer1[, -1]
+c2 <- cancer2[, -1]
+
+# Rename the column names of the c1 matrix
+colnames(c1) <- paste0("X", 1:(ncol(c1)))
+colnames(c2) <- paste0("X", 1:(ncol(c2)))
+
+
+####### 1-D Density plots for X1 and X2 
+
+# c1
+ggplot(data = c1, aes(x = X1)) +
+  geom_density()
+
+ggplot(data = c1, aes(x = X2)) +
+  geom_density()
+
+# c2
+ggplot(data = c2, aes(x = X1)) +
+  geom_density()
+
+ggplot(data = c2, aes(x = X2)) +
+  geom_density()
+
+#################
+
+# Create a 2-D density plot for "c1"
+ggplot(data = c1, aes(x = X1, y = X2)) +
+  geom_density_2d(fill = "blue", alpha = 0.4) +
+  ggtitle("2-D Density Plot for LUAD")
+
+# Create a 2-D density plot for "c2"
+ggplot(data = c2, aes(x = X1, y = X2)) +
+  geom_density_2d(fill = "red", alpha = 0.4) +
+  ggtitle("2-D Density Plot for BRCA")
+
+######################
+
+# 3D density Plots
+
+# Plot the 2-d density plot for c1
+fde1 <- with(c1, MASS::kde2d(X1, X2, n = 50),
+            lims=c(min(c1$X1),max(c1$X1),min(c1$X2),
+                   max(c1$X2)))
+
+# Plot the 2-d density plot for c2
+fde2 <- with(c2, MASS::kde2d(X1, X2, n = 50),
+            lims=c(min(c2$X1),max(c2$X1),min(c2$X2),
+                   max(c2$X2)))
+
+# Color palette (100 colors)
+col.pal = colorRampPalette(c("yellow", "red"))
+colors = col.pal(100)
+# centers of surface facets
+nrz = ncz = 50
+z1.facet.center = (fde1$z[-1, -1] + fde1$z[-1, -ncz] +
+fde1$z[-nrz, -1] + fde1$z[-nrz, -ncz])/4
+# Range of colors
+z1.facet.range = cut(z1.facet.center, 100)
+
+# do the same for f2
+z2.facet.center = (fde2$z[-1, -1] + fde2$z[-1, -ncz] +
+fde2$z[-nrz, -1] + fde2$z[-nrz, -ncz])/4
+z2.facet.range = cut(z2.facet.center, 100)
+
+par(mfrow=c(2,2),mar = c(.6,0.5,.8,.5),oma=c(.3,.3,.3,.3))
+persp(fde1,phi=30,theta=20,d=5,xlab="X1",ylab="X2",
+zlab="density",main=expression(f[1]),r = sqrt(.5),
+ticktype="detailed",col=colors[z1.facet.range])
+
+persp(fde2,phi=30,theta=20,d=5,xlab="X1",ylab="X2",
+zlab="density",main=expression(f[2]),r = sqrt(0.5),
+ticktype="detailed",col=colors[z2.facet.range])
+
+
+
+```
+# Since, the density plots for each observation in a class are skewed and distinct peaks/bumps and therefore, it implies that the Gaussian mixture assumption is not satisfied. Consequently, it is possible that the resuts of discriminant analysis are not reliable and thus we have to validate them going forward.
+
+
+
+Do the following and report your findings on classification:
+
+* Randomly pick 3 genes and their expressions from "stdgexp2", and save them as object "stdgexp2a".
+
+```{r Task B2 a}
+set.seed(123)
+# Randomly select 3 genes and their expressions (excluding the first column)
+stdgexp2_3genes = sample(2:ncol(stdgexp2), 3)
+# Select the corresponding columns from gexp2 (excluding the first column)
+stdgexp2a = stdgexp2[, stdgexp2_3genes]
+
+```
+
+
+* Randomly pick 60% of samples from "stdgexp2a", use them as the training set, and use the rest as the test set. You can round down the number of samples in the training set by the command `floor` if it is not an integer.
+
+```{r Task B b}
+# Scale the remaining columns
+stdgexp2a_scaled = scale(stdgexp2a)
+
+rTrain_da= base::sample(1:nrow(stdgexp2a_scaled),floor(0.60*nrow(stdgexp2a_scaled)))
+rTest_da =(1:nrow(stdgexp2a_scaled))[-rTrain_da]
+
+trainSet_da =stdgexp2a_scaled[rTrain_da,] 
+testSet_da =stdgexp2a_scaled[rTest_da,]
+
+trainSet_df = as.data.frame(trainSet_da)
+testSet_df = as.data.frame(testSet_da)
+
+# Extracts the class labels for the samples in the training and test set
+trainLabels_da=stdgexp2$Class[rTrain_da]; 
+testLabels_da=stdgexp2$Class[rTest_da]
+
+```
+
+Build a quadratic discriminant analysis model using the training set, and apply the obtained model to the test set to classify each of its observations. You should code "BRCA" as 0 and "LUAD" as 1. If for an observation the posterior probability of being "BRCA" is predicted by the model to be greater than 0.5, the observation is classified as "BRCA". Report via a 2-by-2 table on the classification errors. Note that the predicted posterior probability given by `qda` is for an observation to belong to class "BRCA".
+
+
+Before building a quadratic discriminant analysis model, you need to check for highly correlated gene expressions, i.e., you need to check the sample correlations between each pair of columns of the training set. If there are highly correlated gene expressions, the estimated covariance matrix can be close to to being singular, leading to unstable inference. You can remove a column from two columns when their contained expressions have sample correlation greater than 0.9 in absolute value.
+
+```{r Task B2 c}
+library(MASS)
+# calculate correlation matrix of columns in training set
+cor_matrix = cor(trainSet_df)
+
+# identify pairs of columns with correlation greater than 0.9 in absolute value
+cor_pairs = which(abs(cor_matrix) > 0.9 & upper.tri(cor_matrix), arr.ind = TRUE)
+cor_pairs
+#Thus, No pairs of columns with correlation greater than 0.9
+
+############### QDA Below #####################
+```
+
+```{r QDA}
+
+library(MASS)
+
+qda_model = qda(trainLabels_da ~ ., data = trainSet_df)
+qda_model
+
+# Apply the obtained model to the test set to classify each of its observations
+qda_pred = predict(qda_model, testSet_df)
+
+
+# Replace "BRCA" with 0 and "LUAD" with 1 in the testLabels_da
+testLabels_da[testLabels_da == "BRCA"] <- 0
+testLabels_da[testLabels_da == "LUAD"] <- 1
+
+
+# Convert the predicted posterior probability to predicted classes based on the 0.5 threshold
+qda_class <- ifelse(qda_pred$posterior[,1] > 0.5, 0, 1)
+
+
+# Create a confusion matrix
+conf_mat <- table(qda_class, testLabels_da)
+
+# Print the confusion matrix
+conf_mat
+
+# Calculate the error rate
+error_rate <- (conf_mat[1,2] + conf_mat[2,1]) / sum(conf_mat)
+error_rate
+
+
+```
+
+
+# The error rate is 0.0678 (or 6.78%), which indicates that the model is making correct predictions for the majority of the test set samples. This is a reasonably good result, as a lower error rate would be preferred but 6.78% is still an acceptable level of error.
+
+# It may be noted that for this training set, we used a small dataset with a limited number of genes. Therefore, based on this, we can say that QDA model performed with limited information i.e only three genes/features.
+
+
+
+(**Taks B3**) Do the following:
+
+* Randomly pick 100 genes and their expressions from "stdgexp2", and save them as object "stdgexp2b".
+
+```{r B3 a}
+
+set.seed(123)
+
+#Randomly pick 100 genes and their expression from "stdgexp2"
+
+sample_stdgexp2 = sample(2:ncol(stdgexp2), 100)
+stdgexp2b = stdgexp2[, sample_stdgexp2]
+
+```
+
+* Randomly pick 75% of samples from "stdgexp2b", use them as the training set, and use the rest as the test set. You can round down the number of samples in the training set by the command `floor` if it is not an integer.
+
+```{r B3 b}
+set.seed(123)
+
+# Scale the remaining columns
+stdgexp2b_scaled = scale(stdgexp2b)
+
+rTrain= base::sample(1:nrow(stdgexp2b_scaled),floor(0.75*nrow(stdgexp2b_scaled)))
+rTest =(1:nrow(stdgexp2b_scaled))[-rTrain]
+
+trainSet =stdgexp2b_scaled[rTrain,] 
+testSet =stdgexp2b_scaled[rTest,]
+
+trainSet_df2 = as.data.frame(trainSet)
+testSet_df2 = as.data.frame(testSet)
+
+# Extracts the class labels for the samples in the training and test set
+trainLabels=stdgexp2$Class[rTrain]; 
+testLabels=stdgexp2$Class[rTest]
+
+```
+
+
+
+(**Taks B3**)
+
+Then apply quadratic discriminant analysis by following the requirements given in **Taks B2**. Compare classification results you find here with those found in **Taks B2**, and explain on any difference you find between the classification results.
+
+```{r Task B3 c}
+
+# calculate correlation matrix of columns in training set
+cor_matrix2 = cor(trainSet_df2)
+
+# identify pairs of columns with correlation greater than 0.9 in absolute value
+cor_pairs2 = which(abs(cor_matrix2) > 0.9 & upper.tri(cor_matrix2), arr.ind = TRUE)
+cor_pairs2
+#Thus, No pairs of columns with correlation greater than 0.9
+
+############### QDA Below #####################
+
+
+
+
+# Build a quadratic discriminant analysis model using the training set
+library(MASS)
+qda_model2 = qda(trainLabels~ ., data = trainSet_df2)
+
+# Apply the obtained model to the test set to classify each of its observations
+qda_pred2 = predict(qda_model2, testSet_df2)
+
+
+# Replace "BRCA" with 0 and "LUAD" with 1 in the testLabels_da
+testLabels[testLabels == "BRCA"] <- 0
+testLabels[testLabels == "LUAD"] <- 1
+
+
+# Convert the predicted posterior probability to predicted classes based on the 0.5 threshold
+qda_class2 <- ifelse(qda_pred2$posterior[,1] > 0.5, 0, 1)
+
+
+# Create a confusion matrix
+conf_mat2 <- table(qda_class2, testLabels)
+
+
+# Print the confusion matrix
+print(conf_mat2)
+
+# Calculate overall error rate on test set
+error_rate2 <- (conf_mat2[1,2] + conf_mat2[2,1]) / sum(conf_mat2)
+error_rate2
+```
+
+# Comparing classsification results from TASK B2 and TASK B3, there is an increase in error rate from 6.78% in Task B2 to 25.2% in Task B3 in QDA model with 100 features. This could be due to overfitting as we have increased the training set size. Overfitting occurs when a model is too complex and fits the noise in the data rather than the underlying pattern, resulting in poor performance on new, unseen data. In Task B3, the model has more features than in Task B2, which might have increased the complexity of the model and leading it to overfit the training data.
+
+# Additionally, increase in error rate could be due to chance or randomness in the data, as classification performance can vary depending on the specific samples and features selected. 
+
+
+
+(**Taks B4**) Do the following:
+
+* Randomly pick 100 genes and their expressions from "stdgexp2", and save them as object "stdgexp2b".
+
+```{r Sample for knn}
+
+set.seed(123)
+
+#Randomly pick 100 genes and their expression from "stdgexp2"
+
+sample_stdgexp2 = sample(2:ncol(stdgexp2), 100)
+stdgexp2b = stdgexp2[, sample_stdgexp2]
+
+```
+
+* Randomly pick 75% of samples from "stdgexp2b", use them as the training set, and use the rest as the test set. You can round down the number of samples in the training set by the command `floor` if it is not an integer.
+
+```{r sample 2 for knn}
+set.seed(123)
+
+# Scale the remaining columns
+stdgexp2b_scaled = scale(stdgexp2b)
+
+rTrain= base::sample(1:nrow(stdgexp2b_scaled),floor(0.75*nrow(stdgexp2b_scaled)))
+rTest =(1:nrow(stdgexp2b_scaled))[-rTrain]
+
+trainSet =stdgexp2b_scaled[rTrain,] 
+testSet =stdgexp2b_scaled[rTest,]
+
+trainSet_df2 = as.data.frame(trainSet)
+testSet_df2 = as.data.frame(testSet)
+
+# Add Class column at the beginning of stdgexp2
+trainLabels=stdgexp2$Class[rTrain]; 
+testLabels=stdgexp2$Class[rTest]
+
+```
+
+
+
+Then apply k-nearest-neighbor (k-NN) method with neighborhood size k=3 to the test data to classify each observation in the test set into one of the cancer types. Here, for an observation, if the average of being cancer type "BRCA" is predicted by k-NN to be greater than 0.5, then the observation is classified as being "BRCA". Report via a 2-by-2 table on the classification errors. Compare and comment on the classification results obtained here to those obtain in **Taks B3**. If there is any difference between the classification results, explain why.
+
+```{r KNN}
+library(class)
+
+# Apply k-NN method with neighborhood size k=3 to the test data
+knn3 = knn(train = trainSet, test = testSet, cl = trainLabels, k = 3, prob = TRUE)
+length(testLabels)
+testLabels
+
+table(knn3,testLabels)
+
+# classification error
+sum(1- as.numeric(knn3==testLabels))/length(testLabels)
+#The classification error is low at 1.8 % only.
+
+```
+
+# When we applied K-NN to data selected (stdgexp2b) in TASK B3 with 100 features my error rate decreased significantly to 1.8 % compared to 25% in QDA model of TASK B3. This means when training size increases, KNN performs better on this dataset over QDA to handle more features.
+
+# The kNN algorithm is a simple algorithm that can handle high-dimensional data, whereas QDA may not perform well when the number of features is large. This is because QDA needs to estimate a covariance matrix for each class, which becomes computationally expensive when the number of features is large.
+
+# Further, it is possible that the decision boundary between the two classes is more complex and nonlinear, and that k-NN with k = 3 is better able to capture this than QDA.
+
+
+# By setting k=3 in kNN allows for the classification decision to be based on a larger number of nearest neighbors. This can help to reduce the impact of noise or outliers in the data, which may be especially important when working with high-dimensional gene expression data. Additionally, increasing the number of neighbors can help to smooth out the decision boundary, which may lead to more accurate predictions on the test set.
+
+
+
+
